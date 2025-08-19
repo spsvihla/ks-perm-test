@@ -1,7 +1,7 @@
 [build-system]
 requires = [
-    "scikit_build_core",
-    "pybind11",
+    "scikit_build_core<0.12",  # last version compatible with Python 3.10
+    "pybind11>=2.11.1,<2.14"
 ]
 build-backend = "scikit_build_core.build"
 
@@ -9,7 +9,7 @@ build-backend = "scikit_build_core.build"
 name = "kspt"
 description = "Kolmogorov-Smirnov permutation tests"
 version = "0.0.1"
-requires-python = ">=3.8"
+requires-python = ">=3.10,<3.12"
 dependencies = [
     "numpy"
 ]
