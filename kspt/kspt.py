@@ -48,7 +48,8 @@ def max_split_ks_perm_test(
     Returns
     -------
     float
-        Estimate of the CDF at the given point.
+        The observed KS distnace, the sampled KS disntances, and an estimate of 
+        the CDF at the given point.
 
     Raises
     -------
@@ -70,9 +71,9 @@ def max_split_ks_perm_test(
         raise ValueError(f"min_split_size ({min_split_size}) too large for data size {data.size}")
     if coarse_scan_width >= data.size - 2 * min_split_size:
         raise ValueError(f"coarse_scan_width ({coarse_scan_width}) too large for data size {data.size} and min_split_size {min_split_size}")
-    obs, samples = kspt._kspt.rand_max_split_ks(data, int(num_samples), int(num_bins),
-                                                int(min_split_size), int(coarse_scan_width),
-                                                seed)
-    samples.sort()
-    result = np.searchsorted(samples, obs, side='left') / num_samples
-    return result.item()
+    T_observed, T_sampled = kspt._kspt.rand_max_split_ks(data, int(num_samples), 
+                                                         int(num_bins), int(min_split_size), 
+                                                         int(coarse_scan_width), seed)
+    T_sampled.sort()
+    result = np.searchsorted(T_sampled, T_observed, side='left') / num_samples
+    return T_observed, T_sampled, result.item()
