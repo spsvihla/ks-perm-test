@@ -139,12 +139,12 @@ make_prefix_cumhist(double* data, int size,
                     const HistBins& bins, const std::vector<int>& splits)
 {
     std::vector<std::vector<int>> cumhists;
-    cumhists.reserve(splits.size());
+    cumhists.reserve(splits.size() + 1);
 
     std::vector<int> hist(bins.num_bins, 0);
     int next = 0;
 
-    for(int i = 0; i < size && next < static_cast<int>(splits.size()); ++i)
+    for(int i = 0; i < size; ++i)
     {
         if(i == splits[next])
         {
@@ -157,6 +157,11 @@ make_prefix_cumhist(double* data, int size,
         bin = std::min(bins.num_bins - 1, bin);
         hist[bin]++;
     }
+
+    // append total counts
+    std::vector<int> cumhist(hist.size());
+    std::partial_sum(hist.begin(), hist.end(), cumhist.begin());
+    cumhists.push_back(cumhist);
 
     return cumhists;
 }
