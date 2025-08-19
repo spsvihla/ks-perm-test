@@ -1,0 +1,1 @@
+from kspt.kspt import max_split_ks_perm_test
