@@ -10,6 +10,9 @@
 #include <random>
 #include <vector>
 
+// Other includes
+#include <omp.h>
+
 // Project-specific includes
 #include "kspt.hpp"
 
@@ -38,6 +41,8 @@ make_bins(double* data, int size, int num_bins)
     double bin_width = (max_val - min_val) / num_bins;
 
     std::vector<double> edges(num_bins + 1);
+
+    #pragma omp simd
     for(int i = 0; i <= num_bins; ++i)
     {
         edges[i] = min_val + i * bin_width;
@@ -144,16 +149,76 @@ make_prefix_cumhist(double* data, int size,
     std::vector<int> hist(bins.num_bins, 0);
     int next = 0;
 
-    for(int i = 0; i < size; ++i)
-    {
-        if(i == splits[next])
+    int recip = bins.bin_width;
+
+    // this loop might be hard to optimize -- so unroll it manually
+    for (int i = 0; i + 3 < size; i += 4) {
+        // --- iteration i ---
+        if(i == splits[next]) 
         {
             std::vector<int> cumhist(hist.size());
             std::partial_sum(hist.begin(), hist.end(), cumhist.begin());
             cumhists.push_back(cumhist);
             next++;
         }
-        int bin = static_cast<int>((data[i] - bins.min_val) / bins.bin_width);
+        {
+            int bin = static_cast<int>((data[i] - bins.min_val) * recip);
+            bin = std::min(bins.num_bins - 1, bin);
+            hist[bin]++;
+        }
+
+        // --- iteration i+1 ---
+        if(i + 1 == splits[next]) 
+        {
+            std::vector<int> cumhist(hist.size());
+            std::partial_sum(hist.begin(), hist.end(), cumhist.begin());
+            cumhists.push_back(cumhist);
+            next++;
+        }
+        {
+            int bin = static_cast<int>((data[i+1] - bins.min_val) * recip);
+            bin = std::min(bins.num_bins - 1, bin);
+            hist[bin]++;
+        }
+
+        // --- iteration i+2 ---
+        if(i + 2 == splits[next]) 
+        {
+            std::vector<int> cumhist(hist.size());
+            std::partial_sum(hist.begin(), hist.end(), cumhist.begin());
+            cumhists.push_back(cumhist);
+            next++;
+        }
+        {
+            int bin = static_cast<int>((data[i+2] - bins.min_val) * recip);
+            bin = std::min(bins.num_bins - 1, bin);
+            hist[bin]++;
+        }
+
+        // --- iteration i+3 ---
+        if(i + 3 == splits[next]) 
+        {
+            std::vector<int> cumhist(hist.size());
+            std::partial_sum(hist.begin(), hist.end(), cumhist.begin());
+            cumhists.push_back(cumhist);
+            next++;
+        }
+        {
+            int bin = static_cast<int>((data[i+3] - bins.min_val) * recip);
+            bin = std::min(bins.num_bins - 1, bin);
+            hist[bin]++;
+        }
+    }
+
+    // cleanup loop
+    for (int i = (size & ~3); i < size; ++i) {
+        if (i == splits[next]) {
+            std::vector<int> cumhist(hist.size());
+            std::partial_sum(hist.begin(), hist.end(), cumhist.begin());
+            cumhists.push_back(cumhist);
+            next++;
+        }
+        int bin = static_cast<int>((data[i] - bins.min_val) * recip);
         bin = std::min(bins.num_bins - 1, bin);
         hist[bin]++;
     }
@@ -193,6 +258,8 @@ compute_max_split_ks(const std::vector<int>& splits,
     for(int j = 0; j < num_splits; ++j)
     {
         double max = 0;
+
+        #pragma omp simd reduction(max:max)
         for(int b = 0; b < num_bins; ++b)
         {
             double val = std::abs(
@@ -201,6 +268,7 @@ compute_max_split_ks(const std::vector<int>& splits,
             );
             max = std::max(max, val);
         }
+
         if(max > maxmax)
         {
             maxmax = max;
@@ -236,11 +304,23 @@ rand_max_split_ks(py::array_t<double> data, int num_samples, int num_bins,
     double* data_ = static_cast<double*>(data.request().ptr);
     int size = static_cast<int>(data.size());
 
+    // generate seeds using the original rng
     unsigned int seed_ = seed.value_or(std::random_device{}());
     std::mt19937 rng(seed_);
 
+    int num_threads = omp_get_max_threads();
+    std::vector<unsigned int> thread_seeds(num_threads);
+
+    std::uniform_int_distribution<unsigned int> dist;
+    for(int t = 0; t < num_threads; ++t) 
+    {
+        thread_seeds[t] = dist(rng);
+    }
+
+    // make histogram bins
     HistBins bins = make_bins(data_, size, num_bins);
 
+    // reprate return array 
     py::array_t<double> samples(num_samples);
     double* samples_ = static_cast<double*>(samples.request().ptr);
 
@@ -248,13 +328,20 @@ rand_max_split_ks(py::array_t<double> data, int num_samples, int num_bins,
     double obs = max_split_ks_dist(data_, size, bins, min_split_size, 
                                    coarse_scan_width);
 
-    // TODO: parallelize loop
     // samples for estimating cdf
-    for(int i = 0; i < num_samples; ++i)
+    #pragma omp parallel
     {
-        fisher_yates(data_, size, rng);
-        samples_[i] = max_split_ks_dist(data_, size, bins, min_split_size, 
-                                        coarse_scan_width);
+        int tid = omp_get_thread_num();
+        std::mt19937 local_rng(thread_seeds[tid]);        
+        std::vector<double> local_data(data_, data_ + size);
+
+        #pragma omp for
+        for(int i = 0; i < num_samples; ++i)
+        {
+            fisher_yates(local_data.data(), size, local_rng);
+            samples_[i] = max_split_ks_dist(local_data.data(), size, bins, 
+                                            min_split_size, coarse_scan_width);
+        }
     }
 
     return py::make_tuple(obs, samples);
