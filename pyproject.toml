@@ -8,7 +8,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "kspt"
 description = "Kolmogorov-Smirnov permutation tests"
-version = "0.0.1"
+version = "1.0.0"
 requires-python = ">=3.10,<3.12"
 dependencies = [
     "numpy"
