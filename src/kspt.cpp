@@ -149,7 +149,7 @@ make_prefix_cumhist(double* data, int size,
     std::vector<int> hist(bins.num_bins, 0);
     int next = 0;
 
-    double recip = bins.bin_width;
+    double recip = 1.0 / bins.bin_width;
 
     // this loop might be hard to optimize -- so unroll it manually
     for (int i = 0; i + 3 < size; i += 4) {
